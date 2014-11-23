@@ -1,0 +1,14 @@
+*.pro.user*
+Makefile
+Makefile.Debug
+Makefile.Release
+/build
+/release
+/debug
+*object_script*
+*~
+*.*~
+*.dll
+*.a
+*.o
+*.d
