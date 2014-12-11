@@ -13,6 +13,7 @@ signals:
     void dataIn(QByteArray);
 
 public slots:
+    void sendData(QByteArray data);
 
 private slots:
     void _slotReadyRead();

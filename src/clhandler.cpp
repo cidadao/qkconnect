@@ -1,6 +1,10 @@
 #include "clhandler.h"
 #include "qkconnect_global.h"
 #include "qkconnectserver.h"
+#include "qkconn.h"
+#include "qkconnloopback.h"
+#include "qkconnserial.h"
+#include "qkconnthread.h"
 
 #include <QDebug>
 #include <QCoreApplication>
@@ -26,8 +30,8 @@ void CLHandler::run()
 
     parser.addPositionalArgument("ip", QCoreApplication::translate("main", "Server's IP"));
     parser.addPositionalArgument("port", QCoreApplication::translate("main", "Server's port"));
-    parser.addPositionalArgument("tech", QCoreApplication::translate("main", "Communication technology"));
-    parser.addPositionalArgument("params", QCoreApplication::translate("main", "Communication parameters"));
+    parser.addPositionalArgument("conn", QCoreApplication::translate("main", "Connection type"));
+    parser.addPositionalArgument("params", QCoreApplication::translate("main", "Connection parameters"));
 
     QCommandLineOption optionHelp(QStringList() << "h" << "help",
                                   QCoreApplication::translate("main", "Show help."));
@@ -39,7 +43,7 @@ void CLHandler::run()
 
     const QStringList args = parser.positionalArguments();
 
-    if(args.count() < 4)
+    if(args.count() < 3)
     {
         qDebug() << "ERROR: Invalid number of arguments";
         exit(1);
@@ -47,54 +51,100 @@ void CLHandler::run()
 
     QString serverIP = args.at(0);
     QString serverPort = args.at(1);
-    QString commTech = args.at(2);
-    QStringList commParams = args.mid(3);
+    QString connType = args.at(2);
+    QStringList connParams = args.mid(3);
 
     qDebug("%s %s | qkthings.com", _app->applicationName().toStdString().c_str()
                                  , _app->applicationVersion().toStdString().c_str());
 
     qDebug() << "Server:     " << serverIP << serverPort;
-    qDebug() << "Connection: " << commTech << commParams;
+    qDebug() << "Connection: " << connType << connParams;
 
 
-    thread = new QThread();
+    connThread = new QThread(this);
+    QkConn::Descriptor connDesc;
+    if(connType == "loopback")
+    {
+        conn = new QkConnLoopback();
+    }
+    else if(connType == "serial")
+    {
+        if(connParams.count() != 2)
+        {
+            qDebug() << "ERROR: Invalid number of parameters";
+            exit(1);
+        }
+        connDesc.params["portName"] = connParams.at(0);
+        connDesc.params["baudRate"] = connParams.at(1);
+        conn = new QkConnSerial(connDesc);
+    }
+    else
+    {
+        qDebug() << "ERROR: invalid connection type";
+        exit(1);
+    }
+
+    conn->moveToThread(connThread);
+    connect(connThread, SIGNAL(started()), conn, SLOT(open()));
+    connect(connThread, SIGNAL(finished()), conn, SLOT(deleteLater()));
+    connect(connThread, SIGNAL(finished()), connThread, SLOT(deleteLater()));
+    connect(conn, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
+    connect(conn, SIGNAL(dataIn(QByteArray)), this, SLOT(_slotDataToClient(QByteArray)),Qt::DirectConnection);
+
+    connThread->start();
+
+    serverThread = new QThread(this);
     server = new QkConnectServer(serverIP, serverPort.toInt());
 
-    server->moveToThread(thread);
+    server->moveToThread(serverThread);
 
-    connect(thread, SIGNAL(started()), server, SLOT(run()));
-    connect(thread, SIGNAL(finished()), server, SLOT(deleteLater()));
-    connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
+    connect(serverThread, SIGNAL(started()), server, SLOT(run()));
+    connect(serverThread, SIGNAL(finished()), server, SLOT(deleteLater()));
+    connect(serverThread, SIGNAL(finished()), serverThread, SLOT(deleteLater()));
 
-    connect(server, SIGNAL(dataOut(QByteArray)), this, SLOT(_slotDataOut(QByteArray)), Qt::DirectConnection);
+    connect(server, SIGNAL(dataToConn(QByteArray)), conn, SLOT(sendData(QByteArray)));
+    connect(conn, SIGNAL(dataIn(QByteArray)), server, SLOT(sendData(QByteArray)));
+    connect(server, SIGNAL(dataToConn(QByteArray)), this, SLOT(_slotDataToConn(QByteArray)), Qt::DirectConnection);
     connect(server, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
 
-    thread->start();
-
+    serverThread->start();
 
     qDebug() << "Type 'quit' to quit";
 
-    bool alive = true;
-
-    while(alive)
+    while(true)
     {
-        //cout << "> "; cout.flush();
         QString inputText = cin.readLine();
 
         if(!inputText.isEmpty())
-            cout << inputText << "\n";
-        cout.flush();
-
-        if(inputText == "quit")
-            alive = false;
+        {
+            if(inputText == "quit")
+                break;
+            else
+            {
+                cout << inputText << "\n";
+                cout.flush();
+            }
+        }
     }
+
+    connThread->quit();
+    connThread->wait();
+
+    serverThread->quit();
+    serverThread->wait();
 
     _return();
 }
 
-void CLHandler::_slotDataOut(QByteArray data)
+void CLHandler::_slotDataToConn(QByteArray data)
 {
-    cout << data << "\n";
+    cout << "--> " <<  data << "\n";
+    cout.flush();
+}
+
+void CLHandler::_slotDataToClient(QByteArray data)
+{
+    cout << "<-- " <<  data << "\n";
     cout.flush();
 }
 
@@ -113,8 +163,10 @@ void CLHandler::_slotMessage(int type, QString message)
 void CLHandler::_showHelp(const QCommandLineParser &parser)
 {
     qDebug("%s", parser.helpText().toStdString().c_str());
-    qDebug() << "[tech]           [params]";
+    qDebug() << "[conn]           [params]";
+    qDebug() << "loopback";
     qDebug() << "serial           <portname> <baudrate>";
+    qDebug() << "";
     exit(0);
 }
 

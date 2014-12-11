@@ -4,12 +4,13 @@
 #include <QThread>
 
 class QkConnectSocket;
+class Broker;
 
 class QkConnectClientThread : public QThread
 {
     Q_OBJECT
 public:
-    explicit QkConnectClientThread(int socketDescriptor, QObject *parent = 0);
+    explicit QkConnectClientThread(Broker *broker, int socketDescriptor, QObject *parent = 0);
 
     QkConnectSocket* socket();
 
@@ -18,7 +19,8 @@ protected:
 
 signals:
     void message(int,QString);
-    void dataIn(QByteArray);
+    void dataIn(int, QByteArray);
+    void dataOut(QByteArray);
     void clientConnected(int socket);
     void clientDisconnected(int socket);
 
@@ -32,6 +34,7 @@ private slots:
 private:
     int _socketDescriptor;
     QkConnectSocket *_socket;
+    Broker *_broker;
 
 
 };

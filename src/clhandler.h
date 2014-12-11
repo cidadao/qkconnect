@@ -8,6 +8,8 @@
 
 class QCoreApplication;
 class QkConnectServer;
+class QkConn;
+class QkConnThread;
 
 class CLHandler : public QObject
 {
@@ -21,14 +23,18 @@ signals:
 public slots:
     void run();
     void _slotMessage(int type, QString message);
-    void _slotDataOut(QByteArray data);
+    void _slotDataToClient(QByteArray data);
+    void _slotDataToConn(QByteArray data);
 
 private:
     void _showHelp(const QCommandLineParser &parser);
 
     QCoreApplication *_app;
-    QThread *thread;
+    QThread *serverThread;
+    QThread *connThread;
     QkConnectServer *server;
+    QkConn *conn;
+//    QkConnThread *connThread;
 
 };
 
