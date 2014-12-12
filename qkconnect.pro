@@ -39,3 +39,14 @@ HEADERS += \
     src/qkconn.h \
     src/qkconnthread.h \
     src/qkconnloopback.h
+
+CONFIG(debug, debug|release){
+    DESTDIR = debug
+} else {
+    DESTDIR = release
+}
+
+OBJECTS_DIR = obj
+MOC_DIR = moc
+RCC_DIR = rcc
+UI_DIR = ui
