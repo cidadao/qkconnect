@@ -14,6 +14,7 @@
 #include <QHostAddress>
 #include <QEventLoop>
 #include <QThread>
+#include <QTime>
 
 CLHandler::CLHandler(QCoreApplication *app, QObject *parent) :
     QObject(parent),
@@ -175,13 +176,15 @@ void CLHandler::_slotDataToClient(QByteArray data)
 
 void CLHandler::_slotMessage(int type, QString message)
 {
+    QString timestamp = "(" + QTime::currentTime().toString("hh:mm:ss") + ") ";
+    QString typeStr;
     switch(type)
     {
-    case QKCONNECT_MESSAGE_INFO: cout << "[i] "; break;
-    case QKCONNECT_MESSAGE_ERROR: cout << "[e] "; break;
+    case QKCONNECT_MESSAGE_INFO: typeStr ="[i] "; break;
+    case QKCONNECT_MESSAGE_ERROR: typeStr = "[e] "; break;
     }
 
-    cout << message << "\n";
+    cout << timestamp << typeStr << message << "\n";
     cout.flush();
 }
 
