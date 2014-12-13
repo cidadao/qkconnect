@@ -8,6 +8,7 @@
 
 class QCoreApplication;
 class QkConnectServer;
+class QkSpyServer;
 class QkConn;
 class QkConnThread;
 
@@ -30,11 +31,12 @@ private:
     void _showHelp(const QCommandLineParser &parser);
 
     QCoreApplication *_app;
-    QThread *serverThread;
+    QThread *connectServerThread;
+    QThread *spyServerThread;
     QThread *connThread;
-    QkConnectServer *server;
+    QkConnectServer *connectServer;
+    QkSpyServer *spyServer;
     QkConn *conn;
-//    QkConnThread *connThread;
 
 };
 

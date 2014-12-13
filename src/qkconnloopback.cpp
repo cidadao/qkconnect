@@ -1,6 +1,8 @@
 #include "qkconnloopback.h"
 #include "qkconnect_global.h"
 
+#include <QDebug>
+
 QkConnLoopback::QkConnLoopback(QObject *parent) :
     QkConn(parent)
 {

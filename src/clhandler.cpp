@@ -1,6 +1,7 @@
 #include "clhandler.h"
 #include "qkconnect_global.h"
 #include "qkconnectserver.h"
+#include "qkspyserver.h"
 #include "qkconn.h"
 #include "qkconnloopback.h"
 #include "qkconnserial.h"
@@ -50,16 +51,21 @@ void CLHandler::run()
     }
 
     QString serverIP = args.at(0);
-    QString serverPort = args.at(1);
+    int serverPort = args.at(1).toInt();
+    int spyServerPort = serverPort + 1;
     QString connType = args.at(2);
     QStringList connParams = args.mid(3);
 
-    qDebug("%s %s | qkthings.com", _app->applicationName().toStdString().c_str()
-                                 , _app->applicationVersion().toStdString().c_str());
+    qDebug("--------------------------------------");
+    qDebug(" %s v%s  |  qkthings.com", _app->applicationName().toStdString().c_str()
+                                     , _app->applicationVersion().toStdString().c_str());
+    qDebug("--------------------------------------");
 
-    qDebug() << "Server:     " << serverIP << serverPort;
-    qDebug() << "Connection: " << connType << connParams;
-
+    qDebug("Server:     %s %d (spy:%d)",
+            serverIP.toStdString().c_str(),
+            serverPort, spyServerPort);
+    qDebug("Connection: %s", connType.toStdString().c_str());
+    qDebug() << "Parameters:" << connParams;
 
     connThread = new QThread(this);
     QkConn::Descriptor connDesc;
@@ -89,25 +95,41 @@ void CLHandler::run()
     connect(connThread, SIGNAL(finished()), conn, SLOT(deleteLater()));
     connect(connThread, SIGNAL(finished()), connThread, SLOT(deleteLater()));
     connect(conn, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
-    connect(conn, SIGNAL(dataIn(QByteArray)), this, SLOT(_slotDataToClient(QByteArray)),Qt::DirectConnection);
 
     connThread->start();
 
-    serverThread = new QThread(this);
-    server = new QkConnectServer(serverIP, serverPort.toInt());
+    connectServerThread = new QThread(this);
+    connectServer = new QkConnectServer(serverIP, serverPort);
 
-    server->moveToThread(serverThread);
+    connectServer->moveToThread(connectServerThread);
 
-    connect(serverThread, SIGNAL(started()), server, SLOT(run()));
-    connect(serverThread, SIGNAL(finished()), server, SLOT(deleteLater()));
-    connect(serverThread, SIGNAL(finished()), serverThread, SLOT(deleteLater()));
+    connect(connectServerThread, SIGNAL(started()), connectServer, SLOT(run()));
+    connect(connectServerThread, SIGNAL(finished()), connectServer, SLOT(deleteLater()));
+    connect(connectServerThread, SIGNAL(finished()), connectServerThread, SLOT(deleteLater()));
 
-    connect(server, SIGNAL(dataToConn(QByteArray)), conn, SLOT(sendData(QByteArray)));
-    connect(conn, SIGNAL(dataIn(QByteArray)), server, SLOT(sendData(QByteArray)));
-    connect(server, SIGNAL(dataToConn(QByteArray)), this, SLOT(_slotDataToConn(QByteArray)), Qt::DirectConnection);
-    connect(server, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
+    connect(connectServer, SIGNAL(dataIn(QByteArray)), conn, SLOT(sendData(QByteArray)));
+    connect(conn, SIGNAL(dataIn(QByteArray)), connectServer, SLOT(sendData(QByteArray)));
 
-    serverThread->start();
+
+    connectServerThread->start();
+
+    spyServerThread = new QThread(this);
+    spyServer = new QkSpyServer(serverIP, spyServerPort);
+
+    spyServer->moveToThread(spyServerThread);
+
+    connect(spyServerThread, SIGNAL(started()), spyServer, SLOT(run()));
+    connect(spyServerThread, SIGNAL(finished()), spyServer, SLOT(deleteLater()));
+    connect(spyServerThread, SIGNAL(finished()), spyServerThread, SLOT(deleteLater()));
+    connect(spyServer, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
+
+    connect(connectServer, SIGNAL(dataIn(QByteArray)), spyServer, SLOT(sendFromClient(QByteArray)));
+    connect(connectServer, SIGNAL(dataOut(QByteArray)), spyServer, SLOT(sendFromConn(QByteArray)));
+    connect(connectServer, SIGNAL(dataIn(QByteArray)), this, SLOT(_slotDataToConn(QByteArray)), Qt::DirectConnection);
+    connect(connectServer, SIGNAL(dataOut(QByteArray)), this, SLOT(_slotDataToClient(QByteArray)),Qt::DirectConnection);
+    connect(connectServer, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
+
+    spyServerThread->start();
 
     qDebug() << "Type 'quit' to quit";
 
@@ -130,8 +152,11 @@ void CLHandler::run()
     connThread->quit();
     connThread->wait();
 
-    serverThread->quit();
-    serverThread->wait();
+    connectServerThread->quit();
+    connectServerThread->wait();
+
+    spyServerThread->quit();
+    spyServerThread->wait();
 
     _return();
 }

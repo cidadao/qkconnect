@@ -1,90 +1,46 @@
 #include "qkconnectserver.h"
-#include "qkconnectclientthread.h"
-#include "qkconnectsocket.h"
+#include "qkclientthread.h"
+#include "qksocket.h"
 #include "qkconnect_global.h"
 
 #include <QDebug>
-#include <QEventLoop>
-
-Broker::Broker(QObject *parent) :
-    QObject(parent)
-{
-
-}
-
-Broker::~Broker()
-{
-    foreach(QkConnectClientThread *thread, threads)
-    {
-        thread->quit();
-        thread->wait();
-    }
-}
 
 QkConnectServer::QkConnectServer(QString ip, int port, QObject *parent) :
-    QTcpServer(parent)
+    QkServer(ip, port, parent)
 {
-    _ip = ip;
-    _port = port;
 
-    _broker = new Broker(this);
-
-    connect(_broker, SIGNAL(dataToConn(QByteArray)), this, SIGNAL(dataToConn(QByteArray)));
 }
 
-void QkConnectServer::run()
+void QkConnectServer::handleDataIn(int socketDesc, QByteArray data)
 {
-    QHostAddress hostAddress;
-    if(_ip.toLower() == "localhost")
-        hostAddress = QHostAddress::LocalHost;
-    else
-        hostAddress.setAddress(_ip);
-
-    if(listen(hostAddress, _port))
-    {
-        emit message(QKCONNECT_MESSAGE_INFO, "Listening...");
-    }
-    else
-    {
-        emit message(QKCONNECT_MESSAGE_ERROR, errorString());
-        exit(1);
-    }
-}
-
-void QkConnectServer::incomingConnection(qintptr socketDescriptor)
-{
-    QkConnectClientThread *thread = new QkConnectClientThread(_broker, socketDescriptor, this);
-
-    connect(thread, SIGNAL(dataIn(int,QByteArray)), _broker, SLOT(handleDataIn(int,QByteArray)), Qt::DirectConnection);
-
-    connect(thread, SIGNAL(clientDisconnected(int)), this, SLOT(_slotClientDisconnected(int)), Qt::DirectConnection);
-    connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
-    connect(thread, SIGNAL(message(int,QString)), this, SIGNAL(message(int,QString)), Qt::DirectConnection);
-
-    _broker->threads.insert(socketDescriptor, thread);
-    thread->start();
-}
-
-
-void QkConnectServer::_slotClientDisconnected(int socketDescriptor)
-{
-    if(_broker->threads.remove(socketDescriptor) == 0)
-        emit message(QKCONNECT_MESSAGE_ERROR,
-                     QString().sprintf("Failed to remove socket descriptor %d", socketDescriptor));
+    emit dataIn(data);
 }
 
 void QkConnectServer::sendData(QByteArray data)
 {
-    _broker->sendData(data);
+    emit dataOut(data);
 }
 
-
-void Broker::handleDataIn(int socketDescriptor, QByteArray data)
+void QkConnectServer::_slotClientConnected(int socketDesc)
 {
-    emit dataToConn(data);
+    QkServer::_slotClientConnected(socketDesc);
+
+    QkSocket *socket = _threads.value(socketDesc)->socket();
+    QString heyMsg = QString().sprintf("Hey: %s (client:%d)",
+                                       socket->peerAddress().toString().toStdString().c_str(),
+                                       socketDesc);
+
+    emit message(QKCONNECT_MESSAGE_INFO, heyMsg);
 }
 
-void Broker::sendData(QByteArray data)
+void QkConnectServer::_slotClientDisconnected(int socketDesc)
 {
-    emit dataToClient(data);
+    QkSocket *socket = _threads.value(socketDesc)->socket();
+    QString byeMsg = QString().sprintf("Bye: %s (client:%d)",
+                                       socket->peerAddress().toString().toStdString().c_str(),
+                                       socketDesc);
+
+    emit message(QKCONNECT_MESSAGE_INFO, byeMsg);
+
+    QkServer::_slotClientDisconnected(socketDesc);
 }

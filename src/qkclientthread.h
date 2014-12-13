@@ -1,18 +1,18 @@
-#ifndef QKCONNECTCLIENTTHREAD_H
-#define QKCONNECTCLIENTTHREAD_H
+#ifndef QKCLIENTTHREAD_H
+#define QKCLIENTTHREAD_H
 
 #include <QThread>
 
-class QkConnectSocket;
-class Broker;
+class QkSocket;
+class QkServer;
 
-class QkConnectClientThread : public QThread
+class QkClientThread : public QThread
 {
     Q_OBJECT
 public:
-    explicit QkConnectClientThread(Broker *broker, int socketDescriptor, QObject *parent = 0);
+    explicit QkClientThread(QkServer *server, int socketDesc, QObject *parent = 0);
 
-    QkConnectSocket* socket();
+    QkSocket* socket();
 
 protected:
     void run();
@@ -33,10 +33,10 @@ private slots:
 
 private:
     int _socketDescriptor;
-    QkConnectSocket *_socket;
-    Broker *_broker;
+    QkSocket *_socket;
+    QkServer *_server;
 
 
 };
 
-#endif // QKCONNECTCLIENTTHREAD_H
+#endif // QKCLIENTTHREAD_H

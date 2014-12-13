@@ -22,23 +22,27 @@ SOURCES += \
 src/main.cpp \
     src/clhandler.cpp \
     src/qkconnectserver.cpp \
-    src/qkconnectsocket.cpp \
-    src/qkconnectclientthread.cpp \
     src/qkconnserial.cpp \
     src/qkconn.cpp \
     src/qkconnthread.cpp \
-    src/qkconnloopback.cpp
+    src/qkconnloopback.cpp \
+    src/qkclientthread.cpp \
+    src/qksocket.cpp \
+    src/qkserver.cpp \
+    src/qkspyserver.cpp
 
 HEADERS += \
     include/qkconnect_global.h \
     src/clhandler.h \
     src/qkconnectserver.h \
-    src/qkconnectsocket.h \
-    src/qkconnectclientthread.h \
     src/qkconnserial.h \
     src/qkconn.h \
     src/qkconnthread.h \
-    src/qkconnloopback.h
+    src/qkconnloopback.h \
+    src/qkclientthread.h \
+    src/qksocket.h \
+    src/qkserver.h \
+    src/qkspyserver.h
 
 CONFIG(debug, debug|release){
     DESTDIR = debug

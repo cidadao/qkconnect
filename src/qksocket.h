@@ -1,13 +1,13 @@
-#ifndef QKCONNECTSOCKET_H
-#define QKCONNECTSOCKET_H
+#ifndef QKSOCKET_H
+#define QKSOCKET_H
 
 #include <QTcpSocket>
 
-class QkConnectSocket : public QTcpSocket
+class QkSocket : public QTcpSocket
 {
     Q_OBJECT
 public:
-    explicit QkConnectSocket(QObject *parent = 0);
+    explicit QkSocket(QObject *parent = 0);
 
 signals:
     void dataIn(QByteArray);
@@ -20,4 +20,4 @@ private slots:
 
 };
 
-#endif // QKCONNECTSOCKET_H
+#endif // QKSOCKET_H
