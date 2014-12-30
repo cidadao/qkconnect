@@ -3,14 +3,20 @@
 
 #include <QObject>
 #include <QCommandLineParser>
+#include <QMutex>
+
+#include "qkconn.h"
+#include "qkserver.h"
 
 #define _return() {emit done(); return;}
+#define _exit(code) {qApp->exit(code); return;}
 
 class QCoreApplication;
 class QkConnectServer;
 class QkSpyServer;
 class QkConn;
 class QkConnThread;
+class QMutex;
 
 class CLHandler : public QObject
 {
@@ -23,12 +29,15 @@ signals:
 
 public slots:
     void run();
-    void _slotMessage(int type, QString message);
+    void _slotMessage(int type, QString message, bool timestamp = true);
     void _slotDataToClient(QByteArray data);
     void _slotDataToConn(QByteArray data);
 
 private:
     void _showHelp(const QCommandLineParser &parser);
+    void _quitThreads();
+    QkConn::Status _waitConnReady(QkConn *conn);
+    QkServer::Status _waitServerReady(QkServer *server);
 
     QCoreApplication *_app;
     QThread *connectServerThread;
@@ -37,6 +46,7 @@ private:
     QkConnectServer *connectServer;
     QkSpyServer *spyServer;
     QkConn *conn;
+    QMutex _mutex;
 
 };
 

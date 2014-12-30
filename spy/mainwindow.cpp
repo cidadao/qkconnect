@@ -16,9 +16,12 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
+    _jsonParser = new JsonParser(this);
+    connect(_jsonParser, SIGNAL(parsed(QJsonDocument)),
+            this, SLOT(_parseJson(QJsonDocument)));
+
     _colorClient = QColor("#53DE9D");
     _colorConn = QColor("#83D6F2");
-    _depthLevel = 0;
 
     _socket = new QTcpSocket(this);
 
@@ -31,8 +34,14 @@ MainWindow::MainWindow(QWidget *parent) :
 
     connect(ui->buttonConnect, SIGNAL(clicked()),
             this, SLOT(slotConnect()));
+    connect(ui->buttonClear, SIGNAL(clicked()),
+            this, SLOT(slotClear()));
+
 #ifdef Q_OS_UNIX
     ui->textWindow->setFont(QFont("Monospace", 9));
+#endif
+#ifdef Q_OS_WIN
+    ui->textWindow->setFont(QFont("Consolas", 9));
 #endif
 
     setWindowTitle("QkSpy");
@@ -88,42 +97,14 @@ void MainWindow::slotSocketError(QAbstractSocket::SocketError error)
     QMessageBox::critical(this, "Error", _socket->errorString());
 }
 
+void MainWindow::slotClear()
+{
+    ui->textWindow->clear();
+}
+
 void MainWindow::_parseData(QByteArray data)
 {
-    bool done = false;
-    char *p_data = data.data();
-    for(int i = 0; i < data.count(); i++)
-    {
-        if(*p_data == '{')
-        {
-            if(_depthLevel == 0)
-                _jsonStr = "";
-            _depthLevel++;
-        }
-        else if(*p_data == '}')
-        {
-            _depthLevel--;
-            if(_depthLevel == 0)
-                done = true;
-        }
-        _jsonStr += *p_data++;
-
-        if(done)
-        {
-            QJsonParseError jsonError;
-            QJsonDocument jsonDoc = QJsonDocument::fromJson(_jsonStr, &jsonError);
-            if(jsonError.error != QJsonParseError::NoError)
-            {
-                qDebug() << jsonError.errorString();
-            }
-            else
-            {
-                _parseJson(jsonDoc);
-                done = false;
-            }
-        }
-
-    }
+    _jsonParser->parseData(data);
 }
 
 void MainWindow::_parseJson(QJsonDocument json)

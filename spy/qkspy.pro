@@ -11,11 +11,18 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 TARGET = QkSpy
 TEMPLATE = app
 
+INCLUDEPATH += ../../utils/
 
 SOURCES += main.cpp\
-        mainwindow.cpp
+        mainwindow.cpp \
+    ../../utils/qkgui.cpp \
+    ../../utils/qkutils.cpp \
+    ../../utils/qkcore.cpp
 
-HEADERS  += mainwindow.h
+HEADERS  += mainwindow.h \
+    ../../utils/qkgui.h \
+    ../../utils/qkutils.h \
+    ../../utils/qkcore.h
 
 FORMS    += mainwindow.ui
 
@@ -29,3 +36,6 @@ OBJECTS_DIR = obj
 MOC_DIR = moc
 RCC_DIR = rcc
 UI_DIR = ui
+
+RESOURCES += \
+    resources/img.qrc

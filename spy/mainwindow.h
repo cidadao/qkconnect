@@ -3,6 +3,10 @@
 
 #include <QMainWindow>
 #include <QAbstractSocket>
+#include "qkutils.h"
+
+using namespace QkUtils;
+
 class QTcpSocket;
 
 namespace Ui {
@@ -23,21 +27,20 @@ private slots:
     void slotDisconnected();
     void slotReadyRead();
     void slotSocketError(QAbstractSocket::SocketError error);
+    void slotClear();
+    void _parseJson(QJsonDocument json);
+
 
 private:
+    void _parseData(QByteArray data);
+
     Ui::MainWindow *ui;
     QTcpSocket *_socket;
 
     QColor _colorClient;
     QColor _colorConn;
 
-    int _depthLevel;
-    QByteArray _jsonStr;
-
-    void _parseData(QByteArray data);
-    void _parseJson(QJsonDocument json);
-
-
+    JsonParser *_jsonParser;
 };
 
 #endif // MAINWINDOW_H

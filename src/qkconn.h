@@ -9,6 +9,13 @@ class QkConn : public QObject
 {
     Q_OBJECT
 public:
+    enum Status
+    {
+        Closed,
+        Ready,
+        FailedToOpen
+    };
+
     class Descriptor
     {
     public:
@@ -17,8 +24,12 @@ public:
     };
 
     explicit QkConn(QObject *parent = 0);
+    Status currentStatus();
+
+    static void listAvailable();
 
 signals:
+    void statusChanged();
     void message(int, QString);
     void dataIn(QByteArray);
 
@@ -28,7 +39,10 @@ public slots:
     virtual void sendData(QByteArray data) = 0;
 
 protected:
+    void _changeStatus(Status status);
+
     Descriptor _desc;
+    Status _status;
 
 };
 

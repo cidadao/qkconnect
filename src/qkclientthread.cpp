@@ -2,9 +2,12 @@
 #include "qksocket.h"
 #include "qkconnect_global.h"
 #include "qkserver.h"
+#include "qkutils.h"
 
 #include <QDebug>
 #include <QHostAddress>
+
+using namespace QkUtils;
 
 QkClientThread::QkClientThread(QkServer *server, int socketDesc, QObject *parent) :
     QThread(parent)
@@ -33,7 +36,7 @@ void QkClientThread::run()
     emit clientConnected(_socketDescriptor);
 
     connect(_server, SIGNAL(dataOut(QByteArray)), _socket, SLOT(sendData(QByteArray)));
-    connect(_socket, SIGNAL(dataIn(QByteArray)), this, SLOT(_slotDataIn(QByteArray)), Qt::DirectConnection);
+    connect(_socket, SIGNAL(dataIn(QByteArray)), this, SLOT(handleDataIn(QByteArray)), Qt::DirectConnection);
     connect(_socket, SIGNAL(disconnected()), this, SLOT(_slotDisconnected()), Qt::DirectConnection);
 
     exec();
@@ -46,13 +49,13 @@ void QkClientThread::sendData(QByteArray data)
         _socket->write(data);
 }
 
-void QkClientThread::_slotDataIn(QByteArray data)
+void QkClientThread::handleDataIn(QByteArray data)
 {
     emit dataIn(_socketDescriptor, data);
 }
 
 void QkClientThread::_slotDisconnected()
 {
+//    qDebug() << __PRETTY_FUNCTION__;
     emit clientDisconnected(_socketDescriptor);
-    quit();
 }

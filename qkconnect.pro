@@ -16,7 +16,8 @@ TEMPLATE = app
 INCLUDEPATH += \
 include \
 src \
-src/include
+src/include \
+ ../utils
 
 SOURCES += \
 src/main.cpp \
@@ -29,7 +30,9 @@ src/main.cpp \
     src/qkclientthread.cpp \
     src/qksocket.cpp \
     src/qkserver.cpp \
-    src/qkspyserver.cpp
+    src/qkspyserver.cpp \
+    ../utils/qkutils.cpp \
+    ../utils/qkcore.cpp
 
 HEADERS += \
     include/qkconnect_global.h \
@@ -42,7 +45,9 @@ HEADERS += \
     src/qkclientthread.h \
     src/qksocket.h \
     src/qkserver.h \
-    src/qkspyserver.h
+    src/qkspyserver.h \
+    ../utils/qkutils.h \
+    ../utils/qkcore.h
 
 CONFIG(debug, debug|release){
     DESTDIR = debug

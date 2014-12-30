@@ -15,13 +15,17 @@
 #include <QEventLoop>
 #include <QThread>
 #include <QTime>
+#include <QTimer>
+#include <QMutexLocker>
 
 CLHandler::CLHandler(QCoreApplication *app, QObject *parent) :
     QObject(parent),
     _app(app)
 {
 
-
+    connThread = 0;
+    connectServerThread = 0;
+    spyServerThread = 0;
 }
 
 void CLHandler::run()
@@ -36,19 +40,33 @@ void CLHandler::run()
     parser.addPositionalArgument("params", QCoreApplication::translate("main", "Connection parameters"));
 
     QCommandLineOption optionHelp(QStringList() << "h" << "help",
-                                  QCoreApplication::translate("main", "Show help."));
+                                  tr("Show help."));
     parser.addOption(optionHelp);
+
+    QCommandLineOption optionParse(QStringList() << "p" << "parse",
+                                   tr("Parse bytestream into packets."));
+    parser.addOption(optionParse);
+
+    QCommandLineOption optionListSerial(QStringList() << "list-serial",
+                                        QCoreApplication::translate("main", "List available serial ports."));
+    parser.addOption(optionListSerial);
 
     parser.process(*_app);
 
-    if(parser.isSet(optionHelp)) { _showHelp(parser); }
+    if(parser.isSet(optionHelp)) { _showHelp(parser); _exit(0); }
+
+    if(parser.isSet(optionListSerial))
+    {
+        QkConnSerial::listAvailable();
+        _exit(0);
+    }
 
     const QStringList args = parser.positionalArguments();
 
     if(args.count() < 3)
     {
-        qDebug() << "ERROR: Invalid number of arguments";
-        exit(1);
+        _slotMessage(QKCONNECT_MESSAGE_ERROR, "Invalid number of arguments", false);
+        _exit(1);
     }
 
     QString serverIP = args.at(0);
@@ -56,17 +74,14 @@ void CLHandler::run()
     int spyServerPort = serverPort + 1;
     QString connType = args.at(2);
     QStringList connParams = args.mid(3);
+    bool parseMode = parser.isSet(optionParse);
 
-    qDebug("--------------------------------------");
-    qDebug(" %s v%s  |  qkthings.com", _app->applicationName().toStdString().c_str()
-                                     , _app->applicationVersion().toStdString().c_str());
-    qDebug("--------------------------------------");
-
-    qDebug("Server:     %s %d (spy:%d)",
+    qDebug("> Server:     %s %d (spy:%d)",
             serverIP.toStdString().c_str(),
             serverPort, spyServerPort);
-    qDebug("Connection: %s", connType.toStdString().c_str());
-    qDebug() << "Parameters:" << connParams;
+    qDebug("> Connection: %s", connType.toStdString().c_str());
+    qDebug() << "> Parameters:" << connParams;
+    qDebug() << "> Parse mode:" << parseMode;
 
     connThread = new QThread(this);
     QkConn::Descriptor connDesc;
@@ -78,8 +93,8 @@ void CLHandler::run()
     {
         if(connParams.count() != 2)
         {
-            qDebug() << "ERROR: Invalid number of parameters";
-            exit(1);
+            _slotMessage(QKCONNECT_MESSAGE_ERROR, "Invalid number of parameters", false);
+            _exit(1);
         }
         connDesc.params["portName"] = connParams.at(0);
         connDesc.params["baudRate"] = connParams.at(1);
@@ -87,9 +102,11 @@ void CLHandler::run()
     }
     else
     {
-        qDebug() << "ERROR: invalid connection type";
-        exit(1);
+        _slotMessage(QKCONNECT_MESSAGE_ERROR, "Invalid connection type", false);
+        _exit(1);
     }
+
+    qDebug() << "Type 'quit' to quit";
 
     conn->moveToThread(connThread);
     connect(connThread, SIGNAL(started()), conn, SLOT(open()));
@@ -98,28 +115,39 @@ void CLHandler::run()
     connect(conn, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
 
     connThread->start();
+    if(_waitConnReady(conn) != QkConn::Ready)
+    {
+        _quitThreads();
+        _exit(1);
+    }
 
     connectServerThread = new QThread(this);
     connectServer = new QkConnectServer(serverIP, serverPort);
+    connectServer->setParseMode(parseMode);
 
     connectServer->moveToThread(connectServerThread);
 
-    connect(connectServerThread, SIGNAL(started()), connectServer, SLOT(run()));
+    connect(connectServerThread, SIGNAL(started()), connectServer, SLOT(create()));
     connect(connectServerThread, SIGNAL(finished()), connectServer, SLOT(deleteLater()));
     connect(connectServerThread, SIGNAL(finished()), connectServerThread, SLOT(deleteLater()));
 
+    connect(connectServer, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
     connect(connectServer, SIGNAL(dataIn(QByteArray)), conn, SLOT(sendData(QByteArray)));
     connect(conn, SIGNAL(dataIn(QByteArray)), connectServer, SLOT(sendData(QByteArray)));
 
-
     connectServerThread->start();
+    if(_waitServerReady(connectServer) != QkServer::Connected)
+    {
+        _quitThreads();
+        _exit(1);
+    }
 
     spyServerThread = new QThread(this);
     spyServer = new QkSpyServer(serverIP, spyServerPort);
 
     spyServer->moveToThread(spyServerThread);
 
-    connect(spyServerThread, SIGNAL(started()), spyServer, SLOT(run()));
+    connect(spyServerThread, SIGNAL(started()), spyServer, SLOT(create()));
     connect(spyServerThread, SIGNAL(finished()), spyServer, SLOT(deleteLater()));
     connect(spyServerThread, SIGNAL(finished()), spyServerThread, SLOT(deleteLater()));
     connect(spyServer, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
@@ -128,11 +156,14 @@ void CLHandler::run()
     connect(connectServer, SIGNAL(dataOut(QByteArray)), spyServer, SLOT(sendFromConn(QByteArray)));
     connect(connectServer, SIGNAL(dataIn(QByteArray)), this, SLOT(_slotDataToConn(QByteArray)), Qt::DirectConnection);
     connect(connectServer, SIGNAL(dataOut(QByteArray)), this, SLOT(_slotDataToClient(QByteArray)),Qt::DirectConnection);
-    connect(connectServer, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
 
     spyServerThread->start();
+    if(_waitServerReady(spyServer) != QkServer::Connected)
+    {
+        _quitThreads();
+        _exit(1);
+    }
 
-    qDebug() << "Type 'quit' to quit";
 
     while(true)
     {
@@ -150,16 +181,57 @@ void CLHandler::run()
         }
     }
 
-    connThread->quit();
-    connThread->wait();
+    _quitThreads();
+    _exit(0);
+}
 
-    connectServerThread->quit();
-    connectServerThread->wait();
+void CLHandler::_quitThreads()
+{
+    if(connThread != 0 &&
+       connThread->isRunning())
+    {
+        connThread->quit();
+        connThread->wait();
+    }
 
-    spyServerThread->quit();
-    spyServerThread->wait();
+    if(connectServerThread != 0 &&
+       connectServerThread->isRunning())
+    {
+        connectServer->kill();
+        connectServerThread->quit();
+        connectServerThread->wait();
+    }
 
-    _return();
+    if(spyServerThread != 0 &&
+       spyServerThread->isRunning())
+    {
+        spyServerThread->quit();
+        spyServerThread->wait();
+    }
+}
+
+QkConn::Status CLHandler::_waitConnReady(QkConn *conn)
+{
+    QEventLoop eventLoop;
+    QTimer timer;
+    connect(&timer, SIGNAL(timeout()), &eventLoop, SLOT(quit()));
+    connect(conn, SIGNAL(statusChanged()), &eventLoop, SLOT(quit()));
+    timer.start(5000);
+    eventLoop.exec();
+    disconnect(conn, SIGNAL(statusChanged()), &eventLoop, SLOT(quit()));
+    return conn->currentStatus();
+}
+
+QkServer::Status CLHandler::_waitServerReady(QkServer *server)
+{
+    QEventLoop eventLoop;
+    QTimer timer;
+    connect(&timer, SIGNAL(timeout()), &eventLoop, SLOT(quit()));
+    connect(server, SIGNAL(statusChanged()), &eventLoop, SLOT(quit()));
+    timer.start(5000);
+    eventLoop.exec();
+    disconnect(server, SIGNAL(statusChanged()), &eventLoop, SLOT(quit()));
+    return server->currentStatus();
 }
 
 void CLHandler::_slotDataToConn(QByteArray data)
@@ -174,9 +246,11 @@ void CLHandler::_slotDataToClient(QByteArray data)
     cout.flush();
 }
 
-void CLHandler::_slotMessage(int type, QString message)
+void CLHandler::_slotMessage(int type, QString message, bool timestamp)
 {
-    QString timestamp = "(" + QTime::currentTime().toString("hh:mm:ss") + ") ";
+    QMutexLocker locker(&_mutex);
+
+    QString timeStr = "(" + QTime::currentTime().toString("hh:mm:ss") + ") ";
     QString typeStr;
     switch(type)
     {
@@ -184,7 +258,9 @@ void CLHandler::_slotMessage(int type, QString message)
     case QKCONNECT_MESSAGE_ERROR: typeStr = "[e] "; break;
     }
 
-    cout << timestamp << typeStr << message << "\n";
+    if(timestamp)
+        cout << timeStr;
+    cout << typeStr << message << "\n";
     cout.flush();
 }
 
@@ -195,6 +271,5 @@ void CLHandler::_showHelp(const QCommandLineParser &parser)
     qDebug() << "loopback";
     qDebug() << "serial           <portname> <baudrate>";
     qDebug() << "";
-    exit(0);
 }
 

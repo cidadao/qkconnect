@@ -12,6 +12,7 @@ bool QkConnLoopback::open()
 {
     emit message(QKCONNECT_MESSAGE_INFO,
                  tr("Connection ready!"));
+    _changeStatus(QkConn::Ready);
     return true;
 }
 

@@ -3,6 +3,7 @@
 
 #include <QDebug>
 #include <QSerialPort>
+#include <QSerialPortInfo>
 #include <QEventLoop>
 
 QkConnSerial::QkConnSerial(const Descriptor &desc, QObject *parent) :
@@ -10,6 +11,26 @@ QkConnSerial::QkConnSerial(const Descriptor &desc, QObject *parent) :
 {
     _desc = desc;
     _sp = new QSerialPort(this);
+}
+
+void QkConnSerial::listAvailable()
+{
+    qDebug("* Available serial ports:");
+    qDebug("* Name       PID  VID  Description");
+    foreach(QSerialPortInfo info, QSerialPortInfo::availablePorts())
+    {
+
+        if(!info.portName().contains("ACM") &&
+           !info.portName().contains("USB") &&
+           !info.portName().contains("COM"))
+            continue;
+
+        qDebug("  %-10s %04X %04X %s",
+               info.portName().toStdString().c_str(),
+               info.productIdentifier(),
+               info.vendorIdentifier(),
+               info.description().toStdString().c_str());
+    }
 }
 
 
@@ -35,17 +56,17 @@ bool QkConnSerial::open()
 
         emit message(QKCONNECT_MESSAGE_INFO,
                      tr("Connection ready!"));
+        _changeStatus(QkConn::Ready);
+        return true;
     }
     else
     {
         emit message(QKCONNECT_MESSAGE_ERROR,
                      tr("Connection failed: ") + QString().sprintf("%s. %s", portName.toStdString().c_str(),
                                                                                      _sp->errorString().toStdString().c_str()));
-
+        _changeStatus(QkConn::FailedToOpen);
         return false;
     }
-
-    return true;
 }
 
 void QkConnSerial::close()

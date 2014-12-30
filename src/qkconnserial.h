@@ -12,6 +12,8 @@ class QkConnSerial : public QkConn
 public:
     explicit QkConnSerial(const Descriptor &desc, QObject *parent = 0);
 
+    static void listAvailable();
+
 signals:
 
 public slots:

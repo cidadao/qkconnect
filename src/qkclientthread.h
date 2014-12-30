@@ -27,15 +27,14 @@ signals:
 public slots:
     void sendData(QByteArray data);
 
-private slots:
-    void _slotDataIn(QByteArray data);
+protected slots:
     void _slotDisconnected();
+    virtual void handleDataIn(QByteArray data);
 
-private:
+protected:
     int _socketDescriptor;
     QkSocket *_socket;
     QkServer *_server;
-
 
 };
 
