@@ -28,6 +28,7 @@ private:
     QSerialPort *_sp;
     QString _portName;
     int _baudRate;
+    bool _dtr;
 };
 
 #endif // QKCONNSERIAL_H

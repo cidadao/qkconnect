@@ -138,6 +138,16 @@
           <string>ASCII</string>
          </property>
         </item>
+        <item>
+         <property name="text">
+          <string>PACKET</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>JSON</string>
+         </property>
+        </item>
        </widget>
       </item>
       <item>

@@ -47,6 +47,10 @@ void CLHandler::run()
                                    tr("Parse bytestream into packets."));
     parser.addOption(optionParse);
 
+    QCommandLineOption optionJoinFragments(QStringList() << "j" << "join",
+                                   tr("Join fragments (only if parse mode is enabled)."));
+    parser.addOption(optionJoinFragments);
+
     QCommandLineOption optionListSerial(QStringList() << "list-serial",
                                         QCoreApplication::translate("main", "List available serial ports."));
     parser.addOption(optionListSerial);
@@ -75,6 +79,7 @@ void CLHandler::run()
     QString connType = args.at(2);
     QStringList connParams = args.mid(3);
     bool parseMode = parser.isSet(optionParse);
+    bool joinFragments = parser.isSet(optionJoinFragments);
 
     qDebug("> Server:     %s %d (spy:%d)",
             serverIP.toStdString().c_str(),
@@ -91,13 +96,14 @@ void CLHandler::run()
     }
     else if(connType == "serial")
     {
-        if(connParams.count() != 2)
+        if(connParams.count() != 3)
         {
             _slotMessage(QKCONNECT_MESSAGE_ERROR, "Invalid number of parameters", false);
             _exit(1);
         }
-        connDesc.params["portName"] = connParams.at(0);
-        connDesc.params["baudRate"] = connParams.at(1);
+        connDesc.params["portname"] = connParams.at(0);
+        connDesc.params["baudrate"] = connParams.at(1);
+        connDesc.params["dtr"] = connParams.at(2);
         conn = new QkConnSerial(connDesc);
     }
     else
@@ -124,6 +130,10 @@ void CLHandler::run()
     connectServerThread = new QThread(this);
     connectServer = new QkConnectServer(serverIP, serverPort);
     connectServer->setParseMode(parseMode);
+    int options;
+    if(joinFragments)
+        options |= QkConnectServer::joinFragments;
+    connectServer->setOptions(options);
 
     connectServer->moveToThread(connectServerThread);
 
@@ -269,7 +279,7 @@ void CLHandler::_showHelp(const QCommandLineParser &parser)
     qDebug("%s", parser.helpText().toStdString().c_str());
     qDebug() << "[conn]           [params]";
     qDebug() << "loopback";
-    qDebug() << "serial           <portname> <baudrate>";
+    qDebug() << "serial           <portname> <baudrate> <dtr>";
     qDebug() << "";
 }
 

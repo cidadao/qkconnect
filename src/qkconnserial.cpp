@@ -10,6 +10,7 @@ QkConnSerial::QkConnSerial(const Descriptor &desc, QObject *parent) :
     QkConn(parent)
 {
     _desc = desc;
+    _dtr = false;
     _sp = new QSerialPort(this);
 }
 
@@ -38,10 +39,11 @@ bool QkConnSerial::open()
 {
     connect(_sp, SIGNAL(readyRead()), this, SLOT(_slotReadyRead()));
 
-    QString portName = _desc.params["portName"].toString();
-    int baudRate = _desc.params["baudRate"].toInt();
+    QString portName = _desc.params["portname"].toString();
+    int baudRate = _desc.params["baudrate"].toInt();
+    bool dtr = _desc.params["dtr"].toBool();
 
-
+    _dtr = dtr;
     _sp->setPortName(portName);
     _sp->setBaudRate(baudRate);
 
@@ -51,6 +53,11 @@ bool QkConnSerial::open()
         _sp->setParity(QSerialPort::NoParity);
         _sp->setFlowControl(QSerialPort::NoFlowControl);
         _sp->setDataBits(QSerialPort::Data8);
+
+        if(_dtr == true)
+            _sp->setDataTerminalReady(false);
+        else
+            _sp->setDataTerminalReady(true);
 
         _sp->clear();
 

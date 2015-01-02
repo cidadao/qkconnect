@@ -26,7 +26,7 @@ void QkSpyServer::sendFromClient(QByteArray data)
 {
     QJsonObject jsonObj;
     jsonObj.insert("src", QJsonValue("client"));
-    jsonObj.insert("data", QJsonValue(QString(data)));
+    jsonObj.insert("data", QJsonValue(QString(data.toBase64())));
     QJsonDocument jsonDoc;
     jsonDoc.setObject(jsonObj);
 
@@ -37,7 +37,7 @@ void QkSpyServer::sendFromConn(QByteArray data)
 {
     QJsonObject jsonObj;
     jsonObj.insert("src", QJsonValue("conn"));
-    jsonObj.insert("data", QJsonValue(QString(data)));
+    jsonObj.insert("data", QJsonValue(QString(data.toBase64())));
     QJsonDocument jsonDoc;
     jsonDoc.setObject(jsonObj);
 

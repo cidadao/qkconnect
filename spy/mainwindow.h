@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QAbstractSocket>
 #include "qkutils.h"
+#include "qkcore.h"
 
 using namespace QkUtils;
 
@@ -29,6 +30,8 @@ private slots:
     void slotSocketError(QAbstractSocket::SocketError error);
     void slotClear();
     void _parseJson(QJsonDocument json);
+    void _handleFrame(QByteArray frame, bool raw);
+    void _handleFormatChanged(QString format);
 
 
 private:
@@ -41,6 +44,8 @@ private:
     QColor _colorConn;
 
     JsonParser *_jsonParser;
+    Qk::Protocol *_protocol;
+    bool _lastPrintFromClient;
 };
 
 #endif // MAINWINDOW_H

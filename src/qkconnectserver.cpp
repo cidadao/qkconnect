@@ -26,6 +26,11 @@ void QkConnectServer::setParseMode(bool parse)
     _parseMode = parse;
 }
 
+void QkConnectServer::setOptions(int options)
+{
+    _options = options;
+}
+
 void QkConnectServer::run()
 {
     if(_parseMode)
@@ -62,7 +67,7 @@ void QkConnectServer::run()
 
                 emit dataIn(frame);
 
-                timer.start(3000);
+                timer.start(5000);
                 while(timer.isActive() && !frameReceived)
                 {
                     eventLoop.exec();
@@ -70,10 +75,9 @@ void QkConnectServer::run()
                     frameReceived = _frameReceived;
                     _mutex.unlock();
                 }
+
                 if(!frameReceived)
                     qDebug() << "timeout! can't get a frame from connection";
-                else
-                    qDebug() << "frame received from connection :)";
             }
         }
     }
@@ -109,7 +113,6 @@ void QkConnectServer::handleFrameIn(QByteArray frame, bool raw)
     _mutex.lock();
     _framesInQueue.enqueue(frame);
     _mutex.unlock();
-    _waitInputFrame.wakeAll();
 }
 
 void QkConnectServer::handleFrameOut(QByteArray frame, bool raw)
@@ -118,9 +121,21 @@ void QkConnectServer::handleFrameOut(QByteArray frame, bool raw)
     _frameReceived = true;
     _mutex.unlock();
 
-    //TODO join fragments
+    int flags = Qk::Frame::flags(frame, raw);
 
-    emit dataOut(frame);
+    if((_options & joinFragments) && (flags & Qk::PACKET_FLAG_FRAG))
+    {
+        _fragments.append(frame);
+        if(flags & Qk::PACKET_FLAG_LASTFRAG)
+        {
+            QByteArray fullFrame = Qk::Frame::join(_fragments, raw);
+            emit dataOut(fullFrame);
+            _fragments.clear();
+        }
+    }
+    else
+        emit dataOut(frame);
+
 }
 
 void QkConnectServer::_slotClientConnected(int socketDesc)

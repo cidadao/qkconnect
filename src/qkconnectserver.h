@@ -12,9 +12,15 @@ class QkConnectServer : public QkServer
 {
     Q_OBJECT
 public:
+    enum Options
+    {
+        joinFragments = (1<<0)
+    };
+
     explicit QkConnectServer(QString ip, int port, QObject *parent = 0);
 
     void setParseMode(bool parse);
+    void setOptions(int options);
 
 
 public slots:
@@ -37,6 +43,7 @@ protected:
     QQueue<QByteArray> _framesInQueue;
     QWaitCondition _waitInputFrame;
     QList<QByteArray> _fragments;
+    int _options;
 
 };
 

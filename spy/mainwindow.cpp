@@ -16,9 +16,25 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
+#ifdef Q_OS_UNIX
+    ui->textWindow->setFont(QFont("Monospace", 9));
+#endif
+#ifdef Q_OS_WIN
+    ui->textWindow->setFont(QFont("Consolas", 9));
+#endif
+
+    ui->textWindow->setUndoRedoEnabled(false);
+    ui->textWindow->setReadOnly(true);
+
+    _lastPrintFromClient = true;
+
     _jsonParser = new JsonParser(this);
     connect(_jsonParser, SIGNAL(parsed(QJsonDocument)),
             this, SLOT(_parseJson(QJsonDocument)));
+
+    _protocol = new Qk::Protocol(this);
+    connect(_protocol, SIGNAL(parsedFrame(QByteArray,bool)),
+            this, SLOT(_handleFrame(QByteArray,bool)));
 
     _colorClient = QColor("#53DE9D");
     _colorConn = QColor("#83D6F2");
@@ -36,13 +52,8 @@ MainWindow::MainWindow(QWidget *parent) :
             this, SLOT(slotConnect()));
     connect(ui->buttonClear, SIGNAL(clicked()),
             this, SLOT(slotClear()));
-
-#ifdef Q_OS_UNIX
-    ui->textWindow->setFont(QFont("Monospace", 9));
-#endif
-#ifdef Q_OS_WIN
-    ui->textWindow->setFont(QFont("Consolas", 9));
-#endif
+    connect(ui->comboFormat, SIGNAL(currentIndexChanged(QString)),
+            this, SLOT(_handleFormatChanged(QString)));
 
     setWindowTitle("QkSpy");
 }
@@ -113,26 +124,71 @@ void MainWindow::_parseJson(QJsonDocument json)
     QVariantMap map = obj.toVariantMap();
 
     QString src = map.value("src").toString();
-    QByteArray data = map.value("data").toByteArray();
+    QByteArray data = QByteArray::fromBase64(map.value("data").toByteArray());
+    QString text = "";
+
     if(src == "client")
     {
+        if(!_lastPrintFromClient) ui->textWindow->insertPlainText("\n");
         ui->textWindow->setTextColor(_colorClient);
+        _lastPrintFromClient = true;
     }
     else
     {
+        if(_lastPrintFromClient) ui->textWindow->insertPlainText("\n");
         ui->textWindow->setTextColor(_colorConn);
+        _lastPrintFromClient = false;
     }
 
     if(ui->comboFormat->currentText() == "HEX")
     {
+
         foreach(char c, data)
         {
-            ui->textWindow->insertPlainText(QString().sprintf("%02X ", c));
+            text += QString().sprintf("%02X ", c & 0xFF);
         }
+        ui->textWindow->insertPlainText(text);
     }
     else if(ui->comboFormat->currentText() == "ASCII")
     {
         ui->textWindow->insertPlainText(QString(data));
     }
+    else if(ui->comboFormat->currentText() == "JSON")
+    {
+        ui->textWindow->insertPlainText(QString(json.toJson()));
+    }
+    else if(ui->comboFormat->currentText() == "PACKET")
+    {
+        _protocol->parseData(data, true);
+    }
 
+    ui->textWindow->ensureCursorVisible();
+}
+
+void MainWindow::_handleFrame(QByteArray frame, bool raw)
+{
+    Qk::Packet packet;
+    Qk::Packet::fromFrame(frame, raw, &packet);
+    ui->textWindow->append(Qk::Packet::friendlyName(packet.code()));
+    ui->textWindow->append(" Flags:   " + QString().sprintf("%04X", packet.flags()));
+    ui->textWindow->append(" ID:      " + QString().sprintf("%d", packet.id()));
+    ui->textWindow->append(" Code:    " + QString().sprintf("%02X", packet.code()));
+    ui->textWindow->append(" Payload: " + QString().sprintf("[size:%d]", packet.payload().count()));
+
+    //TODO discard DLE bytes if raw == true
+
+    QString payloadHex;
+    foreach(char c, packet.payload())
+    {
+        payloadHex += QString().sprintf("%02X ", c & 0xFF);
+    }
+    if(!payloadHex.isEmpty())
+        ui->textWindow->append(payloadHex);
+    ui->textWindow->append("-------------");
+}
+
+void MainWindow::_handleFormatChanged(QString format)
+{
+    if(format == "PACKET")
+        _protocol->init();
 }
