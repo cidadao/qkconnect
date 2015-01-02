@@ -1,3 +1,0 @@
-qkconnect --help
-qkconnect localhost 1234 loopback 
-qkconnect localhost 1234 serial COM7 38400 1 --parse --join
