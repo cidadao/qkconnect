@@ -38,13 +38,13 @@ void QkServer::create()
 
     if(listen(hostAddress, _port))
     {
-        emit message(QKCONNECT_MESSAGE_INFO, "Listening on port "+ QString::number(_port));
+        emit message(QkConnect::MESSAGE_TYPE_INFO, "server.listening " + QString::number(_port));
         _changeStatus(QkServer::Connected);
     }
     else
     {
-        emit message(QKCONNECT_MESSAGE_ERROR,
-                     errorString() +
+        emit message(QkConnect::MESSAGE_TYPE_ERROR,
+                     "server.listening " + errorString() +
                      QString().sprintf(" (%s:%s)",
                                        hostAddress.toString().toStdString().c_str(),
                                        QString::number(_port).toStdString().c_str()));

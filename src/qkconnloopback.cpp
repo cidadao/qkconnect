@@ -10,8 +10,8 @@ QkConnLoopback::QkConnLoopback(QObject *parent) :
 
 bool QkConnLoopback::open()
 {
-    emit message(QKCONNECT_MESSAGE_INFO,
-                 tr("Connection ready!"));
+    emit message(QkConnect::MESSAGE_TYPE_INFO,
+                 "conn.ready");
     _changeStatus(QkConn::Ready);
     return true;
 }
@@ -23,5 +23,10 @@ void QkConnLoopback::close()
 
 void QkConnLoopback::sendData(QByteArray data)
 {
-    emit dataIn(data);
+//    emit dataIn(data);
+}
+
+void QkConnLoopback::sendJson(QJsonDocument doc)
+{
+    emit jsonIn(doc);
 }

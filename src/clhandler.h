@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QCommandLineParser>
 #include <QMutex>
+#include <QJsonDocument>
 
 #include "qkconn.h"
 #include "qkserver.h"
@@ -18,6 +19,8 @@ class QkConn;
 class QkConnThread;
 class QMutex;
 
+extern QTextStream cout;
+
 class CLHandler : public QObject
 {
     Q_OBJECT
@@ -25,15 +28,20 @@ public:
     explicit CLHandler(QCoreApplication *app, QObject *parent = 0);
 
 signals:
+    void jsonOut(QJsonDocument);
     void done();
+    void aboutToQuit();
 
 public slots:
     void run();
+    void requestToQuit();
     void _slotMessage(int type, QString message, bool timestamp = true);
-    void _slotDataToClient(QByteArray data);
-    void _slotDataToConn(QByteArray data);
+    void _slotDataToClient(QJsonDocument doc);
+    void _slotDataToConn(QJsonDocument doc);
+    void _slotStatus(QJsonDocument doc);
 
 private:
+    void _clHelp();
     void _showHelp(const QCommandLineParser &parser);
     void _quitThreads();
     QkConn::Status _waitConnReady(QkConn *conn);
@@ -47,6 +55,9 @@ private:
     QkSpyServer *spyServer;
     QkConn *conn;
     QMutex _mutex;
+    bool _verbose;
+    bool _no_cli;
+    bool _quit;
 
 };
 

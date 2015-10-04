@@ -3,6 +3,7 @@
 
 #include "qkconn.h"
 #include <QObject>
+#include <QJsonDocument>
 
 class QSerialPort;
 
@@ -20,6 +21,7 @@ public slots:
     bool open();
     void close();
     void sendData(QByteArray data);
+    void sendJson(QJsonDocument doc);
 
 private slots:
     void _slotReadyRead();

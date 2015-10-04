@@ -17,6 +17,10 @@
 #include <QTime>
 #include <QTimer>
 #include <QMutexLocker>
+#include <QJsonDocument>
+
+QTextStream cout(stdout, QIODevice::WriteOnly);
+QTextStream cin(stdin, QIODevice::ReadOnly);
 
 CLHandler::CLHandler(QCoreApplication *app, QObject *parent) :
     QObject(parent),
@@ -26,13 +30,12 @@ CLHandler::CLHandler(QCoreApplication *app, QObject *parent) :
     connThread = 0;
     connectServerThread = 0;
     spyServerThread = 0;
+    _quit = false;
 }
 
 void CLHandler::run()
 {
     QCommandLineParser parser;
-    //parser.addHelpOption();
-    parser.addVersionOption();
 
     parser.addPositionalArgument("ip", QCoreApplication::translate("main", "Server's IP"));
     parser.addPositionalArgument("port", QCoreApplication::translate("main", "Server's port"));
@@ -42,6 +45,17 @@ void CLHandler::run()
     QCommandLineOption optionHelp(QStringList() << "h" << "help",
                                   tr("Show help."));
     parser.addOption(optionHelp);
+
+    QCommandLineOption optionVersion(QStringList() << "version",
+                                     tr("Show version"));
+    parser.addOption(optionVersion);
+
+    QCommandLineOption optionVerbose(QStringList() << "verbose",
+                                     tr("Verbose mode"));
+    parser.addOption(optionVerbose);
+
+    QCommandLineOption optionNoCLI(QStringList() << "no-cli", tr("No CLI (use TCP API instead)"));
+    parser.addOption(optionNoCLI);
 
     QCommandLineOption optionParse(QStringList() << "p" << "parse",
                                    tr("Parse bytestream into packets."));
@@ -57,6 +71,12 @@ void CLHandler::run()
 
     parser.process(*_app);
 
+    if(parser.isSet(optionVersion))
+    {
+        cout << qApp->applicationVersion() << "\n";
+        cout.flush();
+        _exit(0);
+    }
     if(parser.isSet(optionHelp)) { _showHelp(parser); _exit(0); }
 
     if(parser.isSet(optionListSerial))
@@ -69,7 +89,8 @@ void CLHandler::run()
 
     if(args.count() < 3)
     {
-        _slotMessage(QKCONNECT_MESSAGE_ERROR, "Invalid number of arguments", false);
+        qDebug() << args;
+        _slotMessage(QkConnect::MESSAGE_TYPE_ERROR, "Invalid number of arguments", false);
         _exit(1);
     }
 
@@ -80,57 +101,32 @@ void CLHandler::run()
     QStringList connParams = args.mid(3);
     bool parseMode = parser.isSet(optionParse);
     bool joinFragments = parser.isSet(optionJoinFragments);
+    _verbose = parser.isSet(optionVerbose);
+    _no_cli = parser.isSet(optionNoCLI);
 
-    qDebug("> Server:     %s %d (spy:%d)",
-            serverIP.toStdString().c_str(),
-            serverPort, spyServerPort);
-    qDebug("> Connection: %s", connType.toStdString().c_str());
-    qDebug() << "> Parameters:" << connParams;
-    qDebug() << "> Parse mode:" << parseMode;
+    cout << "-------------------------------------------------\n";
+    cout << " QkConnect v" << qApp->applicationVersion() << "\n";
+    cout << "-------------------------------------------------\n";
 
-    connThread = new QThread(this);
-    QkConn::Descriptor connDesc;
-    if(connType == "loopback")
-    {
-        conn = new QkConnLoopback();
-    }
-    else if(connType == "serial")
-    {
-        if(connParams.count() != 3)
-        {
-            _slotMessage(QKCONNECT_MESSAGE_ERROR, "Invalid number of parameters", false);
-            _exit(1);
-        }
-        connDesc.params["portname"] = connParams.at(0);
-        connDesc.params["baudrate"] = connParams.at(1);
-        connDesc.params["dtr"] = connParams.at(2);
-        conn = new QkConnSerial(connDesc);
-    }
-    else
-    {
-        _slotMessage(QKCONNECT_MESSAGE_ERROR, "Invalid connection type", false);
-        _exit(1);
-    }
+    cout << "Server:     " << QString("%1 %2 (spy: %3)")
+            .arg(serverIP)
+            .arg(serverPort)
+            .arg(spyServerPort) << "\n";
 
-    qDebug() << "Type 'quit' to quit";
-
-    conn->moveToThread(connThread);
-    connect(connThread, SIGNAL(started()), conn, SLOT(open()));
-    connect(connThread, SIGNAL(finished()), conn, SLOT(deleteLater()));
-    connect(connThread, SIGNAL(finished()), connThread, SLOT(deleteLater()));
-    connect(conn, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
-
-    connThread->start();
-    if(_waitConnReady(conn) != QkConn::Ready)
-    {
-        _quitThreads();
-        _exit(1);
-    }
+    cout << "Connection: " << connType << "\n";
+    cout << "Parameters: ";
+    foreach(QString param, connParams)
+        cout << param << " ";
+    cout << "\n";
+    cout << "Parse:      " << parseMode << "\n";
+    cout << "Join:       " << joinFragments << "\n";
+    cout << "Verbose:    " << _verbose << "\n";
+    cout << "No-CLI:     " << _no_cli << "\n";
 
     connectServerThread = new QThread(this);
     connectServer = new QkConnectServer(serverIP, serverPort);
     connectServer->setParseMode(parseMode);
-    int options;
+    int options = 0;
     if(joinFragments)
         options |= QkConnectServer::joinFragments;
     connectServer->setOptions(options);
@@ -142,8 +138,8 @@ void CLHandler::run()
     connect(connectServerThread, SIGNAL(finished()), connectServerThread, SLOT(deleteLater()));
 
     connect(connectServer, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
-    connect(connectServer, SIGNAL(dataIn(QByteArray)), conn, SLOT(sendData(QByteArray)));
-    connect(conn, SIGNAL(dataIn(QByteArray)), connectServer, SLOT(sendData(QByteArray)));
+    //connect(connectServer, SIGNAL(dataIn(QByteArray)), conn, SLOT(sendData(QByteArray)));
+    //connect(conn, SIGNAL(dataIn(QByteArray)), connectServer, SLOT(sendData(QByteArray)));
 
     connectServerThread->start();
     if(_waitServerReady(connectServer) != QkServer::Connected)
@@ -162,10 +158,10 @@ void CLHandler::run()
     connect(spyServerThread, SIGNAL(finished()), spyServerThread, SLOT(deleteLater()));
     connect(spyServer, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
 
-    connect(connectServer, SIGNAL(dataIn(QByteArray)), spyServer, SLOT(sendFromClient(QByteArray)));
-    connect(connectServer, SIGNAL(dataOut(QByteArray)), spyServer, SLOT(sendFromConn(QByteArray)));
-    connect(connectServer, SIGNAL(dataIn(QByteArray)), this, SLOT(_slotDataToConn(QByteArray)), Qt::DirectConnection);
-    connect(connectServer, SIGNAL(dataOut(QByteArray)), this, SLOT(_slotDataToClient(QByteArray)),Qt::DirectConnection);
+    connect(connectServer, SIGNAL(jsonIn(QJsonDocument)), spyServer, SLOT(sendFromClient(QJsonDocument)));
+    connect(connectServer, SIGNAL(jsonOut(QJsonDocument)), spyServer, SLOT(sendFromConn(QJsonDocument)));
+    connect(connectServer, SIGNAL(jsonIn(QJsonDocument)), this, SLOT(_slotDataToConn(QJsonDocument)), Qt::DirectConnection);
+    connect(connectServer, SIGNAL(jsonOut(QJsonDocument)), this, SLOT(_slotDataToClient(QJsonDocument)),Qt::DirectConnection);
 
     spyServerThread->start();
     if(_waitServerReady(spyServer) != QkServer::Connected)
@@ -174,25 +170,87 @@ void CLHandler::run()
         _exit(1);
     }
 
-
-    while(true)
+    connThread = new QThread(this);
+    QkConn::Descriptor connDesc;
+    if(connType == "loopback")
     {
+        conn = new QkConnLoopback();
+    }
+    else if(connType == "serial")
+    {
+        if(connParams.count() != 3)
+        {
+            _slotMessage(QkConnect::MESSAGE_TYPE_ERROR, "Invalid number of parameters", false);
+            _exit(1);
+        }
+        connDesc.params["portname"] = connParams.at(0);
+        connDesc.params["baudrate"] = connParams.at(1);
+        connDesc.params["dtr"] = connParams.at(2);
+        conn = new QkConnSerial(connDesc);
+    }
+    else
+    {
+        _slotMessage(QkConnect::MESSAGE_TYPE_ERROR, "Invalid connection type", false);
+        _exit(1);
+    }
+
+    conn->moveToThread(connThread);
+    connect(connThread, SIGNAL(started()), conn, SLOT(open()));
+    connect(connThread, SIGNAL(finished()), conn, SLOT(deleteLater()));
+    connect(connThread, SIGNAL(finished()), connThread, SLOT(deleteLater()));
+    connect(conn, SIGNAL(message(int,QString)), this, SLOT(_slotMessage(int,QString)), Qt::DirectConnection);
+
+    connThread->start();
+    if(_waitConnReady(conn) != QkConn::Ready)
+    {
+        _quitThreads();
+        _exit(1);
+    }
+
+    connect(conn, SIGNAL(jsonIn(QJsonDocument)), connectServer, SLOT(sendJson(QJsonDocument)));
+    connect(connectServer, SIGNAL(jsonIn(QJsonDocument)), conn, SLOT(sendJson(QJsonDocument)));
+
+    connect(this, SIGNAL(jsonOut(QJsonDocument)), connectServer, SLOT(sendJson(QJsonDocument)));
+    connect(this, SIGNAL(jsonOut(QJsonDocument)), spyServer, SLOT(sendStatus(QJsonDocument)));
+    connect(this, SIGNAL(jsonOut(QJsonDocument)), this, SLOT(_slotStatus(QJsonDocument)));
+
+    QEventLoop eventLoop;
+    connect(this, SIGNAL(aboutToQuit()), &eventLoop, SLOT(quit()));
+
+    cout << "\nReady.\nNeed help? Type 'help'\n";
+    cout.flush();
+
+    while(!_quit)
+    {
+//          cout << "> ";
+//          cout.flush();
         QString inputText = cin.readLine();
 
         if(!inputText.isEmpty())
         {
             if(inputText == "quit")
                 break;
+            else if(inputText == "help")
+            {
+                _clHelp();
+            }
             else
             {
-                cout << inputText << "\n";
+                cout << "Unknown command: " << inputText << "\n";
                 cout.flush();
             }
         }
+
     }
 
     _quitThreads();
     _exit(0);
+}
+
+void CLHandler::requestToQuit()
+{
+    _quit = true;
+    emit aboutToQuit();
 }
 
 void CLHandler::_quitThreads()
@@ -244,34 +302,68 @@ QkServer::Status CLHandler::_waitServerReady(QkServer *server)
     return server->currentStatus();
 }
 
-void CLHandler::_slotDataToConn(QByteArray data)
+void CLHandler::_slotDataToConn(QJsonDocument doc)
 {
-    cout << "--> " <<  data << "\n";
-    cout.flush();
+    if(_verbose)
+    {
+//        cout << "--> " <<  doc.toJson() << "\n";
+//        cout.flush();
+    }
 }
 
-void CLHandler::_slotDataToClient(QByteArray data)
+void CLHandler::_slotDataToClient(QJsonDocument doc)
 {
-    cout << "<-- " <<  data << "\n";
-    cout.flush();
+    if(_verbose)
+    {
+//        cout << "<-- " <<  doc.toJson() << "\n";
+//        cout.flush();
+    }
+}
+
+void CLHandler::_slotStatus(QJsonDocument doc)
+{
+    if(_verbose)
+    {
+        cout << "status:" << doc.toJson() << "\n";
+        cout.flush();
+    }
 }
 
 void CLHandler::_slotMessage(int type, QString message, bool timestamp)
 {
+//    qDebug() << __PRETTY_FUNCTION__ << message;
     QMutexLocker locker(&_mutex);
 
     QString timeStr = "(" + QTime::currentTime().toString("hh:mm:ss") + ") ";
     QString typeStr;
     switch(type)
     {
-    case QKCONNECT_MESSAGE_INFO: typeStr ="[i] "; break;
-    case QKCONNECT_MESSAGE_ERROR: typeStr = "[e] "; break;
+    case QkConnect::MESSAGE_TYPE_INFO: typeStr ="[i] "; break;
+    case QkConnect::MESSAGE_TYPE_ERROR: typeStr = "[e] "; break;
+    case QkConnect::MESSAGE_TYPE_DEBUG: typeStr = "[d] ";
+        if(!_verbose)
+            return;
+        break;
     }
 
-    if(timestamp)
-        cout << timeStr;
-    cout << typeStr << message << "\n";
-    cout.flush();
+    QString line = QString("%1 %2 %3")
+            .arg(timeStr).arg(typeStr).arg(message);
+
+    if(!_no_cli)
+    {
+        cout << line << "\n";
+        cout.flush();
+    }
+    else
+    {
+        QString json_str = "{";
+        json_str += "\"type\": \"status\",";
+        json_str += "\"message\": \"" + line + "\"";
+        json_str += "}";
+        QJsonDocument doc = QJsonDocument::fromJson(json_str.toUtf8());
+
+        emit jsonOut(doc);
+    }
 }
 
 void CLHandler::_showHelp(const QCommandLineParser &parser)
@@ -281,5 +373,11 @@ void CLHandler::_showHelp(const QCommandLineParser &parser)
     qDebug() << "loopback";
     qDebug() << "serial           <portname> <baudrate> <dtr>";
     qDebug() << "";
+}
+
+void CLHandler::_clHelp()
+{
+    cout << "quit      Quit" << "\n";
+    cout.flush();
 }
 

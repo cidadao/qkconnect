@@ -4,6 +4,7 @@ import socket
 import threading
 import select
 import time
+import base64
 
 class TcpClient(object):
 	def __init__(self):
@@ -36,11 +37,10 @@ def main():
 	client = TcpClient()
 	client.connect("localhost", 1234)
 	
-	pkt_search = [0x00, 0x00, 0x01, 0x06]
-	
-	pkt_dict = {}
-	pkt_dict["search"] = pkt_search
-	
+	pkt_dict = {
+	"search": [0x00, 0x00, 0x01, 0x06]
+	}
+
 	print "Available keys:"
 	print pkt_dict.keys()
 	print "Type a key or 'quit' to quit:"
@@ -56,7 +56,15 @@ def main():
 				for b in pkt_dict[inputText]:
 					buf += chr(b)
 				buf += chr(0x55)
-				client.send(buf)
+				data_to_send = json.dumps({
+					"type": "data",
+					"format": "serial",
+					"data": base64.b64encode(buf)
+				}
+				)
+				print data_to_send
+				#for i in range(1,100):
+				client.send(data_to_send)
 
 			else:
 				print "unknown key"

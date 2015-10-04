@@ -14,9 +14,7 @@ CONFIG   -= app_bundle
 TEMPLATE = app
 
 INCLUDEPATH += \
-include \
 src \
-src/include \
  ../utils
 
 SOURCES += \
@@ -32,10 +30,11 @@ src/main.cpp \
     src/qkserver.cpp \
     src/qkspyserver.cpp \
     ../utils/qkutils.cpp \
-    ../utils/qkcore.cpp
+    ../utils/qkcore.cpp \
+    src/qkconnect.cpp
 
 HEADERS += \
-    include/qkconnect_global.h \
+    src/qkconnect_global.h \
     src/clhandler.h \
     src/qkconnectserver.h \
     src/qkconnserial.h \
@@ -47,7 +46,8 @@ HEADERS += \
     src/qkserver.h \
     src/qkspyserver.h \
     ../utils/qkutils.h \
-    ../utils/qkcore.h
+    ../utils/qkcore.h \
+    src/qkconnect.h
 
 CONFIG(debug, debug|release){
     DESTDIR = debug
@@ -55,7 +55,7 @@ CONFIG(debug, debug|release){
     DESTDIR = release
 }
 
-OBJECTS_DIR = obj
-MOC_DIR = moc
-RCC_DIR = rcc
-UI_DIR = ui
+OBJECTS_DIR = build/obj
+MOC_DIR = build/moc
+RCC_DIR = build/rcc
+UI_DIR = build/ui

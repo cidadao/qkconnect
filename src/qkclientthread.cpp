@@ -29,7 +29,7 @@ void QkClientThread::run()
 
     if(!_socket->setSocketDescriptor(_socketDescriptor))
     {
-        emit message(QKCONNECT_MESSAGE_ERROR, _socket->errorString());
+        emit message(QkConnect::MESSAGE_TYPE_ERROR, _socket->errorString());
         return;
     }
 

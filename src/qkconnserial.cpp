@@ -1,10 +1,14 @@
 #include "qkconnserial.h"
 #include "qkconnect_global.h"
+#include "clhandler.h"
 
 #include <QDebug>
 #include <QSerialPort>
 #include <QSerialPortInfo>
 #include <QEventLoop>
+#include <QJsonObject>
+#include <QJsonValue>
+
 
 QkConnSerial::QkConnSerial(const Descriptor &desc, QObject *parent) :
     QkConn(parent)
@@ -16,8 +20,9 @@ QkConnSerial::QkConnSerial(const Descriptor &desc, QObject *parent) :
 
 void QkConnSerial::listAvailable()
 {
-    qDebug("* Available serial ports:");
-    qDebug("* Name       PID  VID  Description");
+    cout << "     Name             PID    VID    Description\n";
+
+    int i = 0;
     foreach(QSerialPortInfo info, QSerialPortInfo::availablePorts())
     {
 
@@ -26,12 +31,14 @@ void QkConnSerial::listAvailable()
            !info.portName().contains("COM"))
             continue;
 
-        qDebug("  %-10s %04X %04X %s",
-               info.portName().toStdString().c_str(),
-               info.productIdentifier(),
-               info.vendorIdentifier(),
-               info.description().toStdString().c_str());
+        cout << QString("[%1] %2 %3 %4 %5")
+                .arg(QString::number(i++).rightJustified(2, '0'))
+                .arg(info.portName().leftJustified(16))
+                .arg(QString::number(info.productIdentifier()).leftJustified(6))
+                .arg(QString::number(info.vendorIdentifier()).leftJustified(6))
+                .arg(info.description()) << "\n";
     }
+    cout.flush();
 }
 
 
@@ -61,15 +68,15 @@ bool QkConnSerial::open()
 
         _sp->clear();
 
-        emit message(QKCONNECT_MESSAGE_INFO,
-                     tr("Connection ready!"));
+        emit message(QkConnect::MESSAGE_TYPE_INFO,
+                     "conn.ready");
         _changeStatus(QkConn::Ready);
         return true;
     }
     else
     {
-        emit message(QKCONNECT_MESSAGE_ERROR,
-                     tr("Connection failed: ") + QString().sprintf("%s. %s", portName.toStdString().c_str(),
+        emit message(QkConnect::MESSAGE_TYPE_ERROR,
+                     "conn.failed" + QString().sprintf("%s. %s", portName.toStdString().c_str(),
                                                                                      _sp->errorString().toStdString().c_str()));
         _changeStatus(QkConn::FailedToOpen);
         return false;
@@ -87,8 +94,29 @@ void QkConnSerial::sendData(QByteArray data)
     _sp->write(data);
 }
 
+void QkConnSerial::sendJson(QJsonDocument doc)
+{
+    QJsonObject obj = doc.object();
+    QByteArray data = QByteArray::fromBase64(obj.value("data").toString().toUtf8());
+
+    emit message(QkConnect::MESSAGE_TYPE_DEBUG,
+                 "serial tx: " + data.toHex().toUpper());
+    _sp->write(data);
+}
+
 
 void QkConnSerial::_slotReadyRead()
 {
-    emit dataIn(_sp->readAll());
+    QByteArray data = _sp->readAll();
+    emit message(QkConnect::MESSAGE_TYPE_DEBUG,
+                 "serial rx: " + data.toHex().toUpper());
+//    emit dataIn(data);
+
+    QString json_str = "{";
+    json_str += "\"type\": \"data\",";
+    json_str += "\"format\": \"serial\",";
+    json_str += "\"data\": \"" + data.toBase64() + "\"";
+    json_str += "}";
+    QJsonDocument doc = QJsonDocument::fromJson(json_str.toUtf8());
+    emit jsonIn(doc);
 }

@@ -2,6 +2,7 @@
 #define QKSPYSERVER_H
 
 #include "qkserver.h"
+#include <QJsonDocument>
 
 class QkSpyServer : public QkServer
 {
@@ -14,8 +15,9 @@ signals:
 public slots:
     void _slotClientConnected(int socketDesc);
     void _slotClientDisconnected(int socketDesc);
-    void sendFromClient(QByteArray data);
-    void sendFromConn(QByteArray data);
+    void sendFromClient(QJsonDocument doc);
+    void sendFromConn(QJsonDocument doc);
+    void sendStatus(QJsonDocument doc);
 
 protected slots:
     void handleDataIn(int socketDesc, QByteArray data);

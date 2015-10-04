@@ -7,6 +7,10 @@
 #include <QQueue>
 #include <QEventLoop>
 #include <QTimer>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
 
 QkConnectServer::QkConnectServer(QString ip, int port, QObject *parent) :
     QkServer(ip, port, parent)
@@ -14,6 +18,9 @@ QkConnectServer::QkConnectServer(QString ip, int port, QObject *parent) :
     _parseMode = false;
     _protocolIn = new Qk::Protocol(this);
     _protocolOut = new Qk::Protocol(this);
+
+    connect(&_jsonParser, SIGNAL(parsed(QJsonDocument)),
+            this, SLOT(handleJsonIn(QJsonDocument)));
 
     connect(_protocolIn, SIGNAL(parsedFrame(QByteArray,bool)),
             this, SLOT(handleFrameIn(QByteArray,bool)));
@@ -38,7 +45,7 @@ void QkConnectServer::run()
         QEventLoop eventLoop;
         QTimer timer;
         int framesInCount;
-        bool frameReceived;
+        bool ackReceived;
         bool alive;
 
         timer.setSingleShot(true);
@@ -60,39 +67,67 @@ void QkConnectServer::run()
 
             if(framesInCount > 0)
             {
+                emit message(QkConnect::MESSAGE_TYPE_DEBUG,
+                             "dequeue frame_in (" + QString::number(framesInCount) + " available)");
+
                 _mutex.lock();
                 QByteArray frame = _framesInQueue.dequeue();
-                frameReceived = _frameReceived = false;
+                ackReceived = _ackReceived = false;
                 _mutex.unlock();
 
-                emit dataIn(frame);
+//                emit dataIn(frame);
+                QString json_str = "{";
+                json_str += "\"type\": \"data\",";
+                json_str += "\"format\": \"serial\",";
+                json_str += "\"data\": \"" + frame.toBase64() + "\"";
+                json_str += "}";
+                QJsonDocument doc = QJsonDocument::fromJson(json_str.toUtf8());
+                emit jsonIn(doc);
+                emit dataIn(doc.toJson());
 
                 timer.start(5000);
-                while(timer.isActive() && !frameReceived)
+                while(timer.isActive() && !ackReceived)
                 {
                     eventLoop.exec();
                     _mutex.lock();
-                    frameReceived = _frameReceived;
+                    ackReceived = _ackReceived;
                     _mutex.unlock();
                 }
 
-                if(!frameReceived)
-                    qDebug() << "timeout! can't get a frame from connection";
+                if(!ackReceived)
+                    qDebug() << "TIMEOUT! failed to get ACK from connection";
             }
         }
     }
 }
 
-
 void QkConnectServer::handleDataIn(int socketDesc, QByteArray data)
+{
+    _jsonParser.parseData(data);
+}
+
+void QkConnectServer::handleJsonIn(QJsonDocument doc)
 {
     if(_parseMode)
     {
-        _protocolIn->parseData(data, true);
+        QJsonObject obj = doc.object();
+        if(obj.value("type").toString() == "data" &&
+           obj.value("format").toString() == "serial")
+        {
+            QString data_str = obj.value("data").toString();
+            QByteArray data = QByteArray::fromBase64(data_str.toUtf8());
+           _protocolIn->parseData(data, true);
+        }
+        else
+        {
+            emit jsonIn(doc);
+            emit dataIn(doc.toJson());
+        }
     }
     else
     {
-        emit dataIn(data);
+        emit jsonIn(doc);
+        emit dataIn(doc.toJson());
     }
 }
 
@@ -108,6 +143,31 @@ void QkConnectServer::sendData(QByteArray data)
     }
 }
 
+void QkConnectServer::sendJson(QJsonDocument doc)
+{
+    if(_parseMode)
+    {
+        QJsonObject obj = doc.object();
+        if(obj.value("type").toString() == "data" &&
+           obj.value("format").toString() == "serial")
+        {
+            QString data_str = obj.value("data").toString();
+            QByteArray data = QByteArray::fromBase64(data_str.toUtf8());
+           _protocolOut->parseData(data, true);
+        }
+        else
+        {
+            emit jsonOut(doc);
+            emit dataOut(doc.toJson());
+        }
+    }
+    else
+    {
+        emit jsonOut(doc);
+        emit dataOut(doc.toJson());
+    }
+}
+
 void QkConnectServer::handleFrameIn(QByteArray frame, bool raw)
 {
     _mutex.lock();
@@ -117,11 +177,18 @@ void QkConnectServer::handleFrameIn(QByteArray frame, bool raw)
 
 void QkConnectServer::handleFrameOut(QByteArray frame, bool raw)
 {
-    _mutex.lock();
-    _frameReceived = true;
-    _mutex.unlock();
-
     int flags = Qk::Frame::flags(frame, raw);
+    int code = Qk::Frame::code(frame, raw);
+
+    emit message(QkConnect::MESSAGE_TYPE_DEBUG,
+                 "frame_out: " + frame.toHex().toUpper());
+
+    if(code == Qk::PACKET_CODE_ACK)
+    {
+        _mutex.lock();
+        _ackReceived = true;
+        _mutex.unlock();
+    }
 
     if((_options & joinFragments) && (flags & Qk::PACKET_FLAG_FRAG))
     {
@@ -134,7 +201,17 @@ void QkConnectServer::handleFrameOut(QByteArray frame, bool raw)
         }
     }
     else
-        emit dataOut(frame);
+    {
+//        emit dataOut(frame);
+        QString json_str = "{";
+        json_str += "\"type\": \"data\",";
+        json_str += "\"format\": \"serial\",";
+        json_str += "\"data\": \"" + frame.toBase64() + "\"";
+        json_str += "}";
+        QJsonDocument doc = QJsonDocument::fromJson(json_str.toUtf8());
+        emit jsonOut(doc);
+        emit dataOut(doc.toJson());
+    }
 
 }
 
@@ -143,21 +220,26 @@ void QkConnectServer::_slotClientConnected(int socketDesc)
     QkServer::_slotClientConnected(socketDesc);
 
     QkSocket *socket = _threads.value(socketDesc)->socket();
-    QString heyMsg = QString().sprintf("Hey: %s (client:%d)",
-                                       socket->peerAddress().toString().toStdString().c_str(),
-                                       socketDesc);
 
-    emit message(QKCONNECT_MESSAGE_INFO, heyMsg);
+
+    QString heyMsg = "client.connected";
+    heyMsg += QString().sprintf(" %s %d",
+               socket->peerAddress().toString().toStdString().c_str(),
+               socketDesc);
+
+    emit message(QkConnect::MESSAGE_TYPE_INFO, heyMsg);
 }
 
 void QkConnectServer::_slotClientDisconnected(int socketDesc)
 {
     QkSocket *socket = _threads.value(socketDesc)->socket();
-    QString byeMsg = QString().sprintf("Bye: %s (client:%d)",
-                                       socket->peerAddress().toString().toStdString().c_str(),
-                                       socketDesc);
 
-    emit message(QKCONNECT_MESSAGE_INFO, byeMsg);
+    QString byeMsg = "client.disconnected";
+    byeMsg += QString().sprintf(" %s %d",
+                socket->peerAddress().toString().toStdString().c_str(),
+                socketDesc);
+
+    emit message(QkConnect::MESSAGE_TYPE_INFO, byeMsg);
 
     QkServer::_slotClientDisconnected(socketDesc);
 }

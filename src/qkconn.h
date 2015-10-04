@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QMap>
 #include <QVariant>
+#include <QJsonDocument>
 
 class QkConn : public QObject
 {
@@ -31,12 +32,14 @@ public:
 signals:
     void statusChanged();
     void message(int, QString);
-    void dataIn(QByteArray);
+//    void dataIn(QByteArray);
+    void jsonIn(QJsonDocument);
 
 public slots:
     virtual bool open() = 0;
     virtual void close() = 0;
     virtual void sendData(QByteArray data) = 0;
+    virtual void sendJson(QJsonDocument doc) = 0;
 
 protected:
     void _changeStatus(Status status);

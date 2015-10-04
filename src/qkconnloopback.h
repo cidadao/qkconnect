@@ -2,6 +2,7 @@
 #define QKCONNLOOPBACK_H
 
 #include "qkconn.h"
+#include <QJsonDocument>
 
 class QkConnLoopback : public QkConn
 {
@@ -16,6 +17,7 @@ public slots:
     bool open();
     void close();
     void sendData(QByteArray data);
+    void sendJson(QJsonDocument doc);
 
 
 };
