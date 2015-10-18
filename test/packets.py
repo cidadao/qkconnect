@@ -56,12 +56,12 @@ def main():
 				for b in pkt_dict[inputText]:
 					buf += chr(b)
 				buf += chr(0x55)
-				data_to_send = json.dumps({
+				data_to_send = json.dumps({ "pkt": {
 					"type": "data",
 					"format": "serial",
 					"data": base64.b64encode(buf)
-				}
-				)
+
+				}})
 				print data_to_send
 				#for i in range(1,100):
 				client.send(data_to_send)
